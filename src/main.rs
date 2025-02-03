@@ -6,8 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
 use std::io::Write;
-
-const REQUEST_DELAY_MS: u64 = 500;
+use clap::value_parser;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Incident {
@@ -144,7 +143,7 @@ async fn store_raw_response(pool: &sqlx::PgPool, content: &str) -> Result<()> {
     Ok(())
 }
 
-async fn process_new_incidents(incidents: Vec<Incident>, pool: &sqlx::PgPool) -> Result<()> {
+async fn process_new_incidents(incidents: Vec<Incident>, pool: &sqlx::PgPool, request_delay: u64) -> Result<()> {
     trace!("Processing {} new incidents: {:?}", incidents.len(), incidents);
     let client = reqwest::Client::new();
 
@@ -154,7 +153,7 @@ async fn process_new_incidents(incidents: Vec<Incident>, pool: &sqlx::PgPool) ->
         process_incident(&client, &pool, incident)
             .await
             .context(format!("Failed to process incident: {}", id))?;
-        tokio::time::sleep(Duration::from_millis(REQUEST_DELAY_MS)).await;
+        tokio::time::sleep(Duration::from_millis(request_delay)).await;
     }
 
     Ok(())
@@ -200,9 +199,9 @@ async fn fetch_incident_detail(client: &reqwest::Client, incident_id: i32) -> Re
 
 async fn store_incident(pool: &sqlx::PgPool, incident: &Incident, detail: &IncidentDetail) -> Result<()> {
     trace!("Storing incident: {}", incident.incident_id);
-    
+
     let parsed: serde_json::Value = serde_json::from_str(&detail.reference).context("Failed to parse references in details")?;
-    
+
     sqlx::query(
         r#"INSERT INTO incidents (
             incident_id, org_publish_date, modified_date, published, publish_date,
@@ -236,6 +235,23 @@ async fn main() -> Result<()> {
     // Initialize logging
     setup_logger();
 
+    let matches = clap::builder::Command::new("dsgvo-downloader")
+        .arg(clap::Arg::new("delay")
+            .short('d')
+            .long("delay")
+            .default_value("500")
+            .action(clap::ArgAction::Set)
+            .value_parser(value_parser!(u64))
+            .help("Delay time in milliseconds")
+            .long_help("Delay time in milliseconds as to not overwhelm the server and disable the api")
+        )
+        .get_matches();
+
+    let delay: u64 = *matches.get_one("delay").context("missing required argument delay")?;
+    if delay < 500 {
+        log::error!("delay has a minimum of 500ms");
+    }
+
     trace!("Setting up database pool and verifying tables");
     let pool = setup_database().await?;
     verify_tables(&pool).await?;
@@ -252,7 +268,7 @@ async fn main() -> Result<()> {
         .collect();
 
     info!("Found {} new incidents", new_incidents.len());
-    process_new_incidents(new_incidents, &pool).await?;
+    process_new_incidents(new_incidents, &pool, delay).await?;
 
     Ok(())
 }

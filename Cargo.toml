@@ -13,3 +13,4 @@ chrono = { version = "0.4.39", features = ["serde"] }
 log = "0.4.25"
 env_logger = "0.11.6"
 anyhow = "1.0.95"
+clap = { version = "4.5.27", features = ["suggestions"] }
