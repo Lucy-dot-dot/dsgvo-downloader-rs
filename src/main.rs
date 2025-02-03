@@ -64,11 +64,8 @@ fn setup_logger() {
         .init();
 }
 
-async fn setup_database() -> Result<sqlx::PgPool> {
+async fn setup_database(database_url: &str) -> Result<sqlx::PgPool> {
     trace!("Setting up database");
-    let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres@localhost:5433/dsgvo".into());
-
     debug!("Using database url: {}", database_url);
 
     PgPoolOptions::new()
@@ -245,6 +242,15 @@ async fn main() -> Result<()> {
             .help("Delay time in milliseconds")
             .long_help("Delay time in milliseconds as to not overwhelm the server and disable the api")
         )
+        .arg(clap::Arg::new("database-url")
+            .short('u')
+            .long("database-url")
+            .default_value("postgres://postgres@localhost:5432/dsgvo")
+            .action(clap::ArgAction::Set)
+            .value_parser(value_parser!(String))
+            .help("Database URL for a postgres instance")
+            .long_help("Database URL for a postgres instance, the tables have to be preconfigured via `schema.sql`")
+        )
         .get_matches();
 
     let delay: u64 = *matches.get_one("delay").context("missing required argument delay")?;
@@ -252,8 +258,10 @@ async fn main() -> Result<()> {
         log::error!("delay has a minimum of 500ms");
     }
 
+    let database_url: &str = matches.get_one("database-url").context("missing required argument database-url").map(String::as_str)?;
+
     trace!("Setting up database pool and verifying tables");
-    let pool = setup_database().await?;
+    let pool = setup_database(database_url).await?;
     verify_tables(&pool).await?;
 
     trace!("Fetching existing incidents");
