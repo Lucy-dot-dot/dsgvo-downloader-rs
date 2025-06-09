@@ -9,7 +9,7 @@ sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio-native-tls", 
 reqwest = { version = "0.12.15", features = ["json"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
-chrono = { version = "0.4.40", features = ["serde"] }
+chrono = { version = "0.4.41", features = ["serde"] }
 log = "0.4.27"
 env_logger = "0.11.8"
 anyhow = "1.0.98"
